@@ -1,6 +1,7 @@
 package com.example.demo.common;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -12,26 +13,31 @@ import java.time.LocalDateTime;
  */
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(description = "统一响应结果")
 public class Result<T> {
 
     /**
      * 状态码
      */
+    @Schema(description = "状态码", example = "200")
     private Integer code;
 
     /**
      * 消息
      */
+    @Schema(description = "响应消息", example = "Success")
     private String message;
 
     /**
      * 数据
      */
+    @Schema(description = "响应数据")
     private T data;
 
     /**
      * 时间戳
      */
+    @Schema(description = "时间戳", example = "2026-02-02T16:30:00")
     private LocalDateTime timestamp;
 
     public Result() {

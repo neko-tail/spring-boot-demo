@@ -13,3 +13,13 @@ mybatis-plus:
     banner: false
     db-config:
       id-type: auto
+
+# SpringDoc OpenAPI 配置
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui
+
