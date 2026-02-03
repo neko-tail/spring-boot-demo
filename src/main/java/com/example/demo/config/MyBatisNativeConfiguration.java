@@ -1,4 +1,5 @@
 package com.example.demo.config;
+
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.logging.LogFactory;
 import org.apache.ibatis.annotations.DeleteProvider;
@@ -26,10 +27,18 @@ import org.apache.ibatis.logging.nologging.NoLoggingImpl;
 import org.apache.ibatis.logging.slf4j.Slf4jImpl;
 import org.apache.ibatis.logging.stdout.StdOutImpl;
 import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.reflection.DefaultReflectorFactory;
+import org.apache.ibatis.reflection.MetaObject;
+import org.apache.ibatis.reflection.SystemMetaObject;
 import org.apache.ibatis.reflection.TypeParameterResolver;
+import org.apache.ibatis.reflection.factory.DefaultObjectFactory;
+import org.apache.ibatis.reflection.wrapper.DefaultObjectWrapperFactory;
 import org.apache.ibatis.scripting.defaults.RawLanguageDriver;
+import org.apache.ibatis.scripting.xmltags.ExpressionEvaluator;
+import org.apache.ibatis.scripting.xmltags.OgnlCache;
 import org.apache.ibatis.scripting.xmltags.XMLLanguageDriver;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.jspecify.annotations.NonNull;
 import org.mybatis.spring.SqlSessionFactoryBean;
 import org.mybatis.spring.mapper.MapperFactoryBean;
 import org.mybatis.spring.mapper.MapperScannerConfigurer;
@@ -61,12 +70,7 @@ import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -87,6 +91,7 @@ public class MyBatisNativeConfiguration {
     static class  MyBaitsRuntimeHintsRegistrar implements RuntimeHintsRegistrar {
         @Override
         public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
+            // MyBatis 核心类
             Stream.of(RawLanguageDriver.class,
                     XMLLanguageDriver.class,
                     RuntimeSupport.class,
@@ -108,7 +113,15 @@ public class MyBatisNativeConfiguration {
                     ArrayList.class,
                     HashMap.class,
                     TreeSet.class,
-                    HashSet.class
+                    HashSet.class,
+                    // MyBatis 反射相关类（用于 OGNL 表达式）
+                    SystemMetaObject.class,
+                    MetaObject.class,
+                    DefaultReflectorFactory.class,
+                    DefaultObjectWrapperFactory.class,
+                    DefaultObjectFactory.class,
+                    OgnlCache.class,
+                    ExpressionEvaluator.class
             ).forEach(x -> hints.reflection().registerType(x, MemberCategory.values()));
             Stream.of(
                     "org/apache/ibatis/builder/xml/*.dtd",
@@ -125,9 +138,9 @@ public class MyBatisNativeConfiguration {
             hints.proxies().registerJdkProxy(ParameterHandler.class);
 
 
-            hints.reflection().registerType(BoundSql.class,MemberCategory.DECLARED_FIELDS);
-            hints.reflection().registerType(RoutingStatementHandler.class,MemberCategory.DECLARED_FIELDS);
-            hints.reflection().registerType(BaseStatementHandler.class,MemberCategory.DECLARED_FIELDS);
+            hints.reflection().registerType(BoundSql.class,MemberCategory.ACCESS_DECLARED_FIELDS);
+            hints.reflection().registerType(RoutingStatementHandler.class,MemberCategory.ACCESS_DECLARED_FIELDS);
+            hints.reflection().registerType(BaseStatementHandler.class,MemberCategory.ACCESS_DECLARED_FIELDS);
         }
     }
 
@@ -152,7 +165,7 @@ public class MyBatisNativeConfiguration {
             if (beanNames.length == 0) {
                 return null;
             }
-            return (context, code) -> {
+            return (context, _) -> {
                 RuntimeHints hints = context.getRuntimeHints();
                 for (String beanName : beanNames) {
                     BeanDefinition beanDefinition = beanFactory.getBeanDefinition(beanName.substring(1));
@@ -163,10 +176,7 @@ public class MyBatisNativeConfiguration {
                             registerReflectionTypeIfNecessary(mapperInterfaceType, hints);
                             hints.proxies().registerJdkProxy(mapperInterfaceType);
                             log.info("Registering MyBatis mapper interface: {}",  mapperInterfaceType.getName());
-                            // 这里注册xml的路径(因为这里是将xml包放在了Java目录里了)
-//                            String packagePath = mapperInterfaceType.getPackage().getName().replace('.', '/');
-//                            String xmlPath = packagePath + "/xml/" + mapperInterfaceType.getSimpleName() + ".xml";
-                            // 如果是将xml 包放在resources目录下，可以使用下面的方式
+                            // 如果是将xml 包放在resources目录下
                             String xmlPath = "mapper/"+mapperInterfaceType.getSimpleName().concat(".xml");
                             log.info("Registering MyBatis mapper xml: {} ",  xmlPath);
                             hints.resources().registerPattern(xmlPath);
@@ -195,7 +205,7 @@ public class MyBatisNativeConfiguration {
         }
 
         @SafeVarargs
-        private final <T extends Annotation> void registerSqlProviderTypes(
+        private <T extends Annotation> void registerSqlProviderTypes(
                 Method method, RuntimeHints hints, Class<T> annotationType, Function<T, Class<?>>... providerTypeResolvers) {
             for (T annotation : method.getAnnotationsByType(annotationType)) {
                 for (Function<T, Class<?>> providerTypeResolver : providerTypeResolvers) {
@@ -235,8 +245,7 @@ public class MyBatisNativeConfiguration {
                 } else {
                     result = (Class<?>) src;
                 }
-            } else if (src instanceof ParameterizedType) {
-                ParameterizedType parameterizedType = (ParameterizedType) src;
+            } else if (src instanceof ParameterizedType parameterizedType) {
                 int index = (parameterizedType.getRawType() instanceof Class
                         && Map.class.isAssignableFrom((Class<?>) parameterizedType.getRawType())
                         && parameterizedType.getActualTypeArguments().length > 1) ? 1 : 0;
@@ -261,12 +270,12 @@ public class MyBatisNativeConfiguration {
         private ConfigurableBeanFactory beanFactory;
 
         @Override
-        public void setBeanFactory(BeanFactory beanFactory) {
+        public void setBeanFactory(@NonNull BeanFactory beanFactory) {
             this.beanFactory = (ConfigurableBeanFactory) beanFactory;
         }
 
         @Override
-        public void postProcessMergedBeanDefinition(RootBeanDefinition beanDefinition, Class<?> beanType, String beanName) {
+        public void postProcessMergedBeanDefinition(@NonNull RootBeanDefinition beanDefinition, @NonNull Class<?> beanType, @NonNull String beanName) {
             if (ClassUtils.isPresent(MAPPER_FACTORY_BEAN, this.beanFactory.getBeanClassLoader())) {
                 resolveMapperFactoryBeanTypeIfNecessary(beanDefinition);
             }
