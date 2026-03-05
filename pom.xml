@@ -124,6 +124,7 @@
                 <configuration>
                     <buildArgs>
                         <buildArg>--features=com.example.demo.config.LambdaRegistrationFeature</buildArg>
+                        <buildArg>-march=compatibility</buildArg>
                     </buildArgs>
                 </configuration>
             </plugin>
